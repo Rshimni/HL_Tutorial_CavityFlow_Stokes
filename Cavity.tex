@@ -17,6 +17,7 @@ citecolor=green,urlcolor=red]{hyperref}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \usepackage{amsmath}
 \usepackage{cleveref}
+\usepackage{authblk}
 %\usepackage[fleqn]{amsmath}
 \usepackage{lineno}
 \usepackage{tikz}
@@ -50,7 +51,8 @@ citecolor=green,urlcolor=red]{hyperref}
 %opening
 \begin{document}
 \title{HiperLife Tutorial: Cavity flow problem}
-\author{LaCàN}
+\author{Arash Imani}
+\affil{LaCàN}
 \maketitle
 
 \linenumbers
@@ -231,7 +233,6 @@ In this section, we present the implementation of our solution in the Hiperlife.
 #include "hl_GlobalBasisFunctions.h"
 #include "hl_LinearSolver_Direct_MUMPS.h"
 #include "hl_NonlinearSolver_NewtonRaphson.h"
-#include "hl_LinearSolver_Iterative_AztecOO.h"
 
 // Header to auxiliary functions
 #include "AuxCavityFlow.h"
@@ -253,7 +254,6 @@ int main(int argc, char** argv)
 	// Initialize MPI
 	hiperlife::Init(argc, argv);
 	
-	// ---------------------------------------------------------------//
 	/// *****                   DATA INPUT                      *****///
 	// ---------------------------------------------------------------//
 	
@@ -308,8 +308,7 @@ int main(int argc, char** argv)
 	cout << "--check meshv/p files to see the meshes--" << endl;
 	disMeshVeloc->printFileLegacyVtk("meshv");
 	disMeshPress->printFileLegacyVtk("meshp");
-	
-	// ---------------------------------------------------------------//
+
 	/// *****               DOFsHANDLER CREATION                *****///
 	// ---------------------------------------------------------------//
 	
@@ -354,7 +353,6 @@ int main(int argc, char** argv)
 	dhandV->UpdateGhosts();
 	dhandP->UpdateGhosts();
 	
-	// ---------------------------------------------------------------//
 	/// *****               HIPERPROBLEM CREATION               *****///
 	// ---------------------------------------------------------------//
 	
@@ -419,8 +417,6 @@ int main(int argc, char** argv)
 #include "hl_DistributedMesh.h" 
 #include "hl_StructMeshGenerator.h" 
 #include "hl_GlobalBasisFunctions.h"
-#include "hl_NonlinearSolver_NewtonRaphson.h"
-#include "hl_LinearSolver_Iterative_AztecOO.h"
 
 struct CavityParams
 {
@@ -466,8 +462,6 @@ void LS(hiperlife::FillStructure& fillStr);
 #include "hl_FillStructure.h"
 #include "hl_DOFsHandler.h"
 #include "hl_HiPerProblem.h"
-#include "hl_LinearSolver_Iterative_AztecOO.h"
-#include "hl_NonlinearSolver_NewtonRaphson.h"
 
 using namespace std;
 using namespace hiperlife;
@@ -488,8 +482,6 @@ void LS(hiperlife::FillStructure& fillStr)
 	double f2 = fillStr.getRealParameter(CavityParams::f2);
 	ttl::tensor<double,1>  F{f1,f2};
 	
-	
-	//----------------------------------------------------------------//
 	// ------------------------- INPUT DATA --------------------------//
 	//----------------------------------------------------------------//
 	
@@ -516,42 +508,49 @@ void LS(hiperlife::FillStructure& fillStr)
 	int numDOFs_p = subFill_p.numDOFs;
 	
 	// Shape functions and derivatives at Gauss points
-	ttl::wrapper<double,2> nborCoords_p(subFill_p.nborCoords.data(),eNN_p,nDim_p);
-	ttl::wrapper<double,1> nborDOFs_p(subFill_p.nborDOFs.data(),eNN_p);
-	ttl::tensor<double,1,false>  bf_p(subFill_p.nborBFs(),eNN_p);
+	ttl::wrapper<double,2> nborCoords_p(subFill_p.nborCoords.data(), eNN_p, nDim_p);
+	ttl::wrapper<double,1> nborDOFs_p(subFill_p.nborDOFs.data(), eNN_p);
+	ttl::tensor<double,1,false>  bf_p(subFill_p.nborBFs(), eNN_p);
 	
-	//------------------------------------------------------------------------------//
-	// ----------------------------- OUTPUT DATA -----------------------------------//
-	//------------------------------------------------------------------------------//
+	// ------------------------------- OUTPUT DATA -----------------------------------//
+	//--------------------------------------------------------------------------------//
 	ttl::wrapper<double,2> Bk0(fillStr.Bk(0).data(),eNN,numDOFs);
 	ttl::wrapper<double,1> Bk1(fillStr.Bk(1).data(),eNN_p);
-	
 	ttl::wrapper<double,4> Ak00(fillStr.Ak(0,0).data(),eNN,numDOFs,eNN,numDOFs);
 	ttl::wrapper<double,3> Ak01(fillStr.Ak(0,1).data(),eNN,numDOFs,eNN_p);
 	ttl::wrapper<double,3> Ak10(fillStr.Ak(1,0).data(),eNN_p,eNN,numDOFs);
 	ttl::wrapper<double,2> Ak11(fillStr.Ak(1,1).data(),eNN_p,eNN_p);
 	
-	//---------------------------- EQUATIONS -----------------------------------//
-	//--------------------------------------------------------------------------//
-	for (int i=0;i < eNN;i++)
-	{
-		for (int j=0;j < eNN;j++)
-		{
-			Ak00(i,0,j,0)+=jac*mu*(2.0*Dbf_g(i,0)*Dbf_g(j,0)+Dbf_g(i,1)*Dbf_g(j,1));
-			Ak00(i,0,j,1)+=jac*mu*Dbf_g(i,1)*Dbf_g(j,0);
-			Ak00(i,1,j,0)+=jac*mu*Dbf_g(i,0)*Dbf_g(j,1);
-			Ak00(i,1,j,1)+=jac*mu*(2.0*Dbf_g(i,1)*Dbf_g(j,1)+Dbf_g(i,0)*Dbf_g(j,0));
-		}
-		for (int j=0;j < eNN_p;j++)
-		{
-			Ak01(i,0,j)-=jac*Dbf_g(i,0)*bf_p(j);
-			Ak01(i,1,j)-=jac*Dbf_g(i,1)*bf_p(j);
-			
-			Ak10(j,i,0)-=jac*bf_p(j)*Dbf_g(i,0);
-			Ak10(j,i,1)-=jac*bf_p(j)*Dbf_g(i,1);
-		} 
-	}
+	//-------------------------------- EQUATIONS ------------------------------------//
+	//-------------------------------------------------------------------------------//
+	//Tensor form
+	// create a 4th order tensor out of Dbf_g
+	tensor<double,4> Dbf4 = outer(Dbf_g,Identity(pDim));
+	Ak00 += jac*mu*product(Dbf4,Dbf4+Dbf4.transpose({0,2,1,3}),{{1,1},{2,2}});
+	Ak01 -= jac * outer(Dbf_g,bf_p);
+	Ak10 -= jac * outer(bf_p,Dbf_g);
 	
+	// Indices form
+	//for (int i=0;i < eNN;i++)
+	//{
+		//for (int j=0;j < eNN;j++)
+		//{
+			//Ak00(i, 0, j, 0) += jac * mu * (2*Dbf_g(i,0)*Dbf_g(j,0) 
+			//+ Dbf_g(i,1)*Dbf_g(j,1));
+			//Ak00(i, 0, j, 1) += jac * mu * (Dbf_g(i,1)*Dbf_g(j,0));
+			//Ak00(i, 1, j, 0) += jac * mu * (Dbf_g(i,0)*Dbf_g(j,1));
+			//Ak00(i, 1, j, 1) += jac * mu * (2*Dbf_g(i,1)*Dbf_g(j,1) 
+			//+ Dbf_g(i,0)*Dbf_g(j,0));
+			//}
+		//for (int j=0;j < eNN_p;j++)
+		//{
+			//Ak01(i, 0, j) += -jac * (Dbf_g(i,0) * bf_p(j));
+			//Ak01(i, 1, j) += -jac * (Dbf_g(i,1) * bf_p(j));
+			
+			//Ak10(j, i, 0) += -jac * (bf_p(j) * Dbf_g(i,0));
+			//Ak10(j, i, 1) += -jac * (bf_p(j) * Dbf_g(i,1));
+			//} 
+		//}	
 }
 
 \end{lstlisting}
